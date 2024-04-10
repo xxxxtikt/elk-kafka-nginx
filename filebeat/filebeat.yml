@@ -1,10 +1,16 @@
 filebeat.inputs:
 - type: log
   enabled: true
+  tags:
+    - app_1_nginx
   paths:
     - /var/log/nginx/*.log
 
 output.kafka:
-  enabled: true
-  hosts: ["logstash:9092"]
+  hosts: ["kafka:9092"]
   topic: "vova"
+  partition.round_robin:
+    reachable_only: false
+  required_acks: 1
+  compression: gzip
+  max_message_bytes: 1000000

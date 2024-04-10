@@ -3,11 +3,10 @@ version: '3.8'
 services:
   elasticsearch:
     image: bitnami/elasticsearch
+    container_name: elasticsearch
     volumes:
-      - /elk/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
-      - type: volume
-        source: elasticsearch
-        target: /usr/share/elasticsearch/data
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - elasticsearch:/usr/share/elasticsearch/data
     environment:
       ELASTIC_PASSWORD: changeme
     ports:
@@ -18,28 +17,32 @@ services:
 
   logstash:
     image: logstash:8.13.0
+    container_name: logstash
     volumes:
-      - /elk/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
-      - /elk/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
     environment:
-      - MOU_HOST=192.168.248.20
+      - MOU_HOST=192.168.1.33
     ports:
       - "5000:5000"
       - "9600:9600"
       - "15044:15044"
     depends_on:
       - elasticsearch
+    links:
+      - kafka
     networks:
       - elk
 
   kibana:
     image:  bitnami/kibana
+    container_name: kibana
     volumes:
-      - /elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+      - ./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
     ports:
       - "5601:5601"
     environment:
-      - MOU_HOST=192.168.248.20
+      - MOU_HOST=192.168.1.33
     depends_on:
       - elasticsearch
     networks:
@@ -47,9 +50,10 @@ services:
 
   nginx:
     image: nginx:latest
+    container_name: nginx
     volumes:
-      - /elk/nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf
-      - /elk/nginx/log:/var/log/nginx
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf
+      - ./nginx/log:/var/log/nginx
     ports:
       - "80:80"
       - "443:443"
@@ -58,11 +62,19 @@ services:
 
   filebeat:
     image: elastic/filebeat:7.17.19
-    entrypoint: "filebeat -e -strict.perms=false"
+    container_name: filebeat
     user: root
+    environment:
+        - strict.perms=false
     volumes:
-      - /elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
-      - /elk/nginx/log:/var/log/nginx
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      - ./nginx/log:/var/log/nginx
+    command: filebeat -e
+    logging:
+      driver: "json-file"
+      options:
+          max-file: "5"
+          max-size: "10m"
     depends_on:
       - nginx
       - logstash
@@ -71,7 +83,7 @@ services:
     networks:
       - elk
     links:
-      - logstash
+      - kafka
 
   zookeeper:
     image: zookeeper:3.9.2-jre-17
@@ -79,29 +91,30 @@ services:
     ports:
       - "2181:2181"
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
+      - ALLOW_ANONYMOUS_LOGIN=yes
     networks:
       - elk
 
   kafka:
-    image: ubuntu/kafka:latest
+    image: docker.io/bitnami/kafka:latest
     container_name: kafka
     ports:
+      - "19093:19093"
       - "9092:9092"
     environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /elk/kafka/config/server.properties:/opt/kafka/config/server.properties
-      - /elk/kafka/config/log4j.properties:/opt/kafka/config/log4j.properties
-      - /elk/kafka/logs:/var/lib/kafka/logs
-      - /elk/kafka/config/kafka-log4j-appender-3.5.1.jar:/opt/kafka/libs/kafka-log4j-appender.jar
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    depends_on:
+      - zookeeper
     networks:
       - elk
-
+    links:
+      - zookeeper
 
 networks:
   elk:
