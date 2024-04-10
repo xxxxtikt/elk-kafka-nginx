@@ -1,0 +1,10 @@
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/nginx/*.log
+
+output.kafka:
+  enabled: true
+  hosts: ["logstash:9092"]
+  topic: "vova"
